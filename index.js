@@ -5,6 +5,7 @@ const port = 8000;
 const socketIo = require("socket.io");
 const http = require("http");
 const jwt = require("jsonwebtoken");
+const bodyParser=require("body-parser")
 
 //models
 const User = require("./models/user");
