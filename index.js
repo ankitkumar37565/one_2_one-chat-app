@@ -8,6 +8,14 @@ var bodyParser = require("body-parser");
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
+app.use(
+  session({
+    secret: "my secret",
+    resave: true,
+    saveUninitialized: true,
+    cookie: {},
+  })
+);
 
 app.get("/", function (req, res) {
   res.sendFile(path.join(__dirname + "/public/index.html"));
@@ -114,7 +122,7 @@ io.sockets.on("connection", function (socket) {
   socket.on("text", function (msg, callback) {
     MongoClient.connect(url, function (err, db) {
       if (err) throw err;
-      var dbo = db.db(dbName);
+      var dbo = db.db("mydb");
       var myobj = { name: socket.nickname, email: socket.email, comment: msg };
       dbo.collection("messages").insertOne(myobj, function (err, res) {
         if (err) throw err;
