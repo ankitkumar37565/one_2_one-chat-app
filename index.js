@@ -1,229 +1,128 @@
-const express = require("express");
-const app = express();
-const mongoose = require("mongoose");
-const port = 8000;
-const socketIo = require("socket.io");
-const http = require("http");
-const jwt = require("jsonwebtoken");
-const bodyParser=require("body-parser")
+var express = require("express");
+var app = express();
+var path = require("path");
+var session = require("express-session");
+var assert = require("assert");
+var socketIo = require("socket.io");
+var bodyParser = require("body-parser");
 
-//models
-const User = require("./models/user");
-const Chat = require("./models/chat");
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.static("public"));
 
-//initialize server
-const server = http.createServer(app);
-
-//create server with express
-const io = socketIo(server);
-
-//enabling json parser
-app.use(bodyParser.json());
-
-//connect to the database
-mongoose.connect("mongodb://localhost/one_2_one_chat_app");
-//acquire the connection
-const db = mongoose.connection;
-//error
-db.on("error", console.error.bind(console, "error connecting to database"));
-//up and running
-db.once("open", function () {
-  console.log("sucessfully connected to database");
+app.get("/", function (req, res) {
+  res.sendFile(path.join(__dirname + "/public/index.html"));
 });
 
-//create user
-app.post("/create-user", function (req, res) {
-  user.create(
-    {
-      username: req.body.username,
-      password: req.body.password,
-    },
-    function (err, newUser) {
-      if (err) {
-        console.log("error in creating user");
-        return;
-      }
-      console.log("new user created");
-      return res.redirect("back");
-    }
-  );
+app.get("/chatroom", function (req, res) {
+  res.sendFile(path.join(__dirname + "/public/chatroom.html"));
 });
 
-//get the token if user exist
-app.post("/api/login", (req, res) => {
-  //check if user exist
-  user.findById(_id).then((user) => {
-    if (!user) {
-      // user couldn't be found
-      return res.json({
-        message: "user not found",
-      });
-    }
-    //user found now create the jwt token
-    jwt.sign({ user: user }, "secretkey", { expiresIn: "1h" }, (err, token) => {
-      res.json({
-        token: token,
-      });
+app.get("/main", function (req, res) {
+  res.sendFile(path.join(__dirname + "/public/main.html"));
+});
+app.get("/signup", function (req, res) {
+  res.sendFile(path.join(__dirname + "/public/signup.html"));
+});
+
+app.post("/signup", function (req, res) {
+  MongoClient.connect(url, async function (err, client) {
+    assert.equal(null, err);
+    const db = client.db(dbName);
+    const collection = db.collection("users");
+    collection.insertOne(req.body.user, function (err, result) {
+      assert.equal(null, err);
+      console.log("Signup registered");
     });
+    app.users = await collection
+      .find({
+        first: req.body.user.first,
+        last: req.body.user.last,
+        email: req.body.user.email,
+        password: req.body.user.password,
+      })
+      .toArray()
+      .then((docs) => {
+        return docs;
+      });
+
+    res.redirect("/login");
   });
 });
 
-// check whether the request has a valid JWT access token
+app.get("/login", function (req, res) {
+  res.sendFile(path.join(__dirname + "/public/login.html"));
+});
 
-function verifyToken(req, res, next) {
-  //get auth header value
-  const bearerHeader = req.headers["authorization"];
-  //check if bearer is undefined
-  if (typeof bearerHeader !== "undefined") {
-    //split at the space
-    const bearer = bearerHeader.split(" ");
-    //set the token
-    req.token = bearer[1];
-    //next middleware
-    next();
-  } else {
-    //forbidden
-    res.sendStatus(403);
-  }
-}
-//new chat message
-app.post("/chats", verifyToken, (req, res) => {
-  const query = Chat.findOne({
-    $or: [
-      {
-        reciever: req.body.reciever,
-        sender: req.body.sender,
-      },
-      {
-        reciever: req.body.sender,
-        sender: req.body.reciever,
-      },
-    ],
+app.post("/login", function (req, res) {
+  MongoClient.connect(url, async function (err, client) {
+    assert.equal(null, err);
+    const db = client.db(dbName);
+    const collection = db.collection("users");
+    app.user = await collection
+      .findOne({ email: req.body.user.email, password: req.body.user.password })
+      .then((doc) => {
+        if (!doc)
+          return res.send("<p>User not found. Go back and try again</p>");
+        return doc;
+      });
+    res.redirect("/main");
   });
-  query
-    .exec()
-    .then((data) => {
-      if (data === null) {
-        const chat = new Chat({
-          sender: req.body.sender,
-          reciever: req.body.reciever,
-          messages: req.body.messages,
-        });
-        chat
-          .save()
-          .then((data) => {
-            res.json(data);
-          })
-          .catch((error) => {
-            res.json(error);
-          });
-      } else {
-        const updateChat = Chat.updateOne(
-          {
-            $or: [
-              { reciever: req.body.reciever, sender: req.body.sender },
-              { reciever: req.body.sender, sender: req.body.reciever },
-            ],
-          },
-          { $set: { messages: req.body.messages } }
+});
+
+app.get("/messages", function (req, res) {
+  var MongoClient = require("mongodb").MongoClient;
+  var url = "mongodb://localhost:27017/";
+
+  MongoClient.connect(url, function (err, db) {
+    if (err) throw err;
+    var dbo = db.db("mydb");
+    dbo
+      .collection("messages")
+      .find()
+      .toArray(function (err, result) {
+        if (err) throw err;
+        res.send(result);
+        db.close();
+      });
+  });
+});
+
+var MongoClient = require("mongodb").MongoClient;
+var url = "mongodb://localhost:27017/";
+const dbName = "one_2_one_chat_app";
+
+const server = app.listen(3000);
+
+var io = socketIo.listen(server);
+
+io.sockets.on("connection", function (socket) {
+  socket.on("join", function () {
+    MongoClient.connect(url, async function (err, client) {
+      assert.equal(null, err);
+      const db = client.db(dbName);
+      const collection = db.collection("users");
+      await collection.findOne({ _id: app.user._id }).then((doc) => {
+        socket.nickname = doc.first;
+        socket.email = doc.email;
+        socket.broadcast.emit(
+          "announcement",
+          doc.first + " joined the chatroom."
         );
-        updateChat
-          .exec()
-          .then((data) => {
-            res.json(data);
-          })
-          .catch((error) => {
-            res.json(error);
-          });
-      }
-    })
-    .catch((error) => {
-      res.json(error);
+      });
     });
-});
-//Chat messages getter API
-app.get("/chats/:sender/:reciever", verifyToken, (req, res) => {
-  const chat = Chat.findOne({
-    $or: [
-      { reciever: req.params.reciever, sender: req.params.sender },
-      { reciever: req.params.sender, sender: req.params.reciever },
-    ],
   });
+  socket.on("text", function (msg, callback) {
+    MongoClient.connect(url, function (err, db) {
+      if (err) throw err;
+      var dbo = db.db(dbName);
+      var myobj = { name: socket.nickname, email: socket.email, comment: msg };
+      dbo.collection("messages").insertOne(myobj, function (err, res) {
+        if (err) throw err;
 
-  chat.exec().then((data) => {
-    if (data === null) {
-      res.json([]);
-    } else {
-      res.json(data.messages);
-    }
-  });
-});
-
-//Chatrooms getter API
-app.get("/chats/:userId", verifyToken, (req, res) => {
-  const chat = Chat.find({
-    $or: [{ reciever: req.params.userId }, { sender: req.params.userId }],
-  });
-
-  chat.exec().then((data) => {
-    if (data.length === 0) {
-      res.json([]);
-    } else {
-      res.json(data);
-    }
-  });
-});
-
-//New Broadcast Messages API
-app.post("/broadcast", verifyToken, (req, res) => {
-  const broadcast = new Broadcast(req.body);
-
-  broadcast
-    .save()
-    .then((data) => {
-      res.json(data);
-    })
-    .catch((error) => {
-      res.json(error);
+        db.close();
+      });
     });
-});
-
-//Broadcast Message getter API
-app.get("/broadcast", verifyToken, (req, res) => {
-  const chat = Broadcast.find();
-
-  chat.exec().then((data) => {
-    if (data === null) {
-      res.json(data);
-    } else {
-      res.json(data);
-    }
+    socket.broadcast.emit("text", socket.nickname, msg);
+    callback(Date().toString());
   });
-});
-
-//socket declaration
-var clients = []; //connected clients
-io.on("connection", (socket) => {
-  console.log("new user connected");
-  socket.on("storeUserInfo", function (data) {
-    //store new user in db
-    var userInfo = new Object();
-    userInfo.userId = socket.id;
-    users.push(userInfo);
-    user.save(done);
-  });
-});
-
-//messages socket
-const chatSocket = io.of("/chatsocket");
-chatSocket.on("connection", function (socket) {
-  //on new message
-  socket.on("newMessage", (data) => {
-    socket.broadcast.emit("incomingMessage", "reload");
-  });
-});
-
-//let server listen
-server.listen(port, () => {
-  console.log(`listening on port ${port}`);
 });
